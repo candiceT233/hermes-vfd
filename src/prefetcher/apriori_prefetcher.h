@@ -15,6 +15,8 @@
 
 #include "prefetcher.h"
 #include <vector>
+#include <unordered_map>
+
 
 namespace hermes {
 
@@ -30,9 +32,11 @@ struct AprioriPrefetchInstr {
   std::vector<AprioriPromoteInstr> promotes_;
 };
 
+
 class AprioriPrefetcher : public PrefetcherPolicy {
  public:
-  std::vector<std::list<AprioriPrefetchInstr>> rank_info_;
+  // std::vector<std::list<AprioriPrefetchInstr>> rank_info_;
+  std::unordered_map<int, std::vector<AprioriPrefetchInstr>> rank_info_;
 
  public:
   /** Constructor. Parse YAML schema. */
@@ -41,11 +45,18 @@ class AprioriPrefetcher : public PrefetcherPolicy {
   /** Parse YAML config */
   void ParseSchema(YAML::Node &schema);
 
+  /** Parse Thread-File YAML config */
+  void ParseSchema2(const YAML::Node& schema);
+
   /** Destructor. */
   virtual ~AprioriPrefetcher() = default;
 
   /** Prefetch based on YAML schema */
   void Prefetch(BufferOrganizer *borg, BinaryLog<IoStat> &log);
+
+  private:
+  void PrintSchema();
+  void PrintSchema2();
 };
 
 }  // namespace hermes
