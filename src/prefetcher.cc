@@ -15,10 +15,14 @@
 #include "prefetcher_factory.h"
 #include <unordered_set>
 
+// TODO(candice): add debug commands
+
+
 namespace hermes {
 
 /** Initialize each candidate prefetcher, including trace info */
 void Prefetcher::Init() {
+  
   mdm_ = &HERMES->mdm_;
   rpc_ = &HERMES->rpc_;
   borg_ = &HERMES->borg_;
@@ -30,6 +34,9 @@ void Prefetcher::Init() {
   if (!is_enabled_) {
     return;
   }
+
+  // TODO(candice): start AprioriPrefetcher? parse schema?
+  AprioriPrefetcher apPrefetcher = AprioriPrefetcher();
 
   // Info needed per-client and server
   mdm_->is_mpi_ = conf.prefetcher_.is_mpi_;
@@ -71,6 +78,7 @@ void Prefetcher::Finalize()  {
 
 /** Parse the MDM's I/O pattern log */
 void Prefetcher::Run() {
+  
   // Get the set of buckets + Ingest log
   std::unordered_set<TagId> tags;
   IoStat entry;
@@ -83,6 +91,7 @@ void Prefetcher::Run() {
   for (auto &bkt_id : tags) {
     std::vector<Trait*> traits = HERMES->GetTraits(bkt_id);
     for (auto trait : traits) {
+      HILOG(kDebug, "Prefetching bucket {} trait {}", bkt_id, trait);
       if (trait->header_->flags_.Any(HERMES_TRAIT_PREFETCHER)) {
         auto *trait_hdr =
           trait->GetHeader<hermes::PrefetcherTraitHeader>();
