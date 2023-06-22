@@ -27,8 +27,11 @@ AprioriPrefetcher::AprioriPrefetcher() {
 
   try {
       YAML::Node yaml_conf = YAML::LoadFile(real_path);
-      ParseSchema(yaml_conf);
-
+      if (is_mpi) {
+          ParseSchema(yaml_conf);
+      } else {
+          ParseSchema2(yaml_conf);
+      }
       HILOG(kDebug, "Complete load of apriori schema {}", real_path)
   } catch (std::exception& e) {
       HELOG(kFatal, e.what())
@@ -109,7 +112,82 @@ void AprioriPrefetcher::PrintSchema() {
 
 /** Custom Schema code start */
 /** Parsing Thread:File YAML Schema. */
-// TODO(candice): add code for parsing thread:file schema
+void AprioriPrefetcher::ParseSchema2(const YAML::Node& schema) {
+
+  for (const auto& rank_node_pair : schema) {
+    int rank = rank_node_pair.first.as<int>(); // this is thread rank
+    const YAML::Node& rank_instrs = rank_node_pair.second;
+
+    // std::vector<AprioriPrefetchInstr>& instr_list = rank_info_[rank];
+    auto& instr_list = rank_info_[rank];
+
+    for (const YAML::Node& instr_list_node : rank_instrs) {
+      const YAML::Node& bucket_node = instr_list_node["bucket"];
+      const YAML::Node& prefetch_node = instr_list_node["prefetch"];
+
+      for (const YAML::Node& prefetch_instr_node : prefetch_node) {
+        AprioriPrefetchInstr instr;
+
+        const YAML::Node& op_count_range_node = prefetch_instr_node["op_count_range"];
+        instr.min_op_count_ = op_count_range_node[0].as<size_t>();
+        instr.max_op_count_ = op_count_range_node[1].as<size_t>();
+
+        const YAML::Node& promote_blobs_node = prefetch_instr_node["promote_blobs"];
+        const YAML::Node& demote_blobs_node = prefetch_instr_node["demote_blobs"];
+
+        for (std::size_t i = 0; i < promote_blobs_node.size(); ++i) {
+          AprioriPromoteInstr promote;
+          promote.bkt_name_ = bucket_node.as<std::string>();
+
+          promote.promote_.push_back(promote_blobs_node[i].as<std::string>());
+          promote.demote_.push_back(demote_blobs_node[i].as<std::string>());
+
+          instr.promotes_.push_back(promote);
+        }
+
+        instr_list.push_back(instr);
+      }
+    }
+  }
+
+  HICLOG(kDebug, PrintSchema2());
+
+}
+
+/** check if schema is being correctly entered*/
+void AprioriPrefetcher::PrintSchema2() {
+  for (const auto& rank_pair : rank_info_) {
+    int rank = rank_pair.first;
+    // const std::vector<AprioriPrefetchInstr>& instr_list = rank_pair.second;
+    auto& instr_list = rank_info_[rank];
+
+    std::cout << "Thread: " << rank << std::endl;
+
+    for (const AprioriPrefetchInstr& instr : instr_list) {
+      std::cout << "  Instruction:" << std::endl;
+      // std::cout << "    Min Op Count: " << instr.min_op_count_ << std::endl;
+      // std::cout << "    Max Op Count: " << instr.max_op_count_ << std::endl;
+      std::cout << "Op Range: [" << instr.min_op_count_ << ", " << instr.max_op_count_ << "]" << std::endl;
+
+      for (const AprioriPromoteInstr& promote_instr : instr.promotes_) {
+        std::cout << "    Bucket: " << promote_instr.bkt_name_ << std::endl;
+
+        std::cout << "    Promote Blobs: ";
+        for (const std::string& blob_name : promote_instr.promote_) {
+          std::cout << blob_name << " ";
+        }
+        std::cout << std::endl;
+
+        std::cout << "    Demote Blobs: ";
+        for (const std::string& blob_name : promote_instr.demote_) {
+          std::cout << blob_name << " ";
+        }
+        std::cout << std::endl;
+      }
+    }
+  }
+}
+
 /** Custom Schema code end */
 
 
