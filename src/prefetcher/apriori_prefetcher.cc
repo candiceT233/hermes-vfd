@@ -67,11 +67,16 @@ void AprioriPrefetcher::ParseSchema(YAML::Node &schema) {
       const YAML::Node& prefetch_node = instr_list_node["prefetch"];
       for (const YAML::Node& instr_node : prefetch_node) {
         AprioriPromoteInstr promote;
-
         promote.bkt_name_ = instr_node["bucket"].as<std::string>();
-        ParseList(promote.promote_, instr_node["promote_blobs"]);
-        ParseList(promote.demote_, instr_node["demote_blobs"]);
 
+        const YAML::Node& promote_blobs_node = instr_node["promote_blobs"];
+        const YAML::Node& demote_blobs_node = instr_node["demote_blobs"];
+        if (promote_blobs_node && !promote_blobs_node.IsNull()){
+          ParseList(promote.promote_, promote_blobs_node);
+        }
+        if (demote_blobs_node && !demote_blobs_node.IsNull()){
+          ParseList(promote.demote_, demote_blobs_node);
+        }
         instr.promotes_.push_back(promote);
       }
 
@@ -116,7 +121,6 @@ void AprioriPrefetcher::PrintSchema() {
 /** Custom Schema code start */
 /** Parsing Thread:File YAML Schema. */
 void AprioriPrefetcher::ParseSchema2(const YAML::Node& schema) {
-  HILOG(kDebug, "Parsing Schema type-2 \n{}", schema);
 
   for (const auto &rank_node_pair : schema) {
     const YAML::Node& rank_node = rank_node_pair.first;
@@ -137,20 +141,20 @@ void AprioriPrefetcher::ParseSchema2(const YAML::Node& schema) {
           instr.max_op_count_ = op_count_range_node[1].as<size_t>();
         }
 
+        AprioriPromoteInstr promote;
+        promote.bkt_name_ = bucket_node.as<std::string>();
+
         const YAML::Node& promote_blobs_node = prefetch_instr_node["promote_blobs"];
         const YAML::Node& demote_blobs_node = prefetch_instr_node["demote_blobs"];
 
-        if (promote_blobs_node && !promote_blobs_node.IsNull() && demote_blobs_node && !demote_blobs_node.IsNull()) {
-          for (std::size_t i = 0; i < promote_blobs_node.size(); ++i) {
-            AprioriPromoteInstr promote;
-            promote.bkt_name_ = bucket_node.as<std::string>();
-
-            promote.promote_.push_back(promote_blobs_node[i].as<std::string>());
-            promote.demote_.push_back(demote_blobs_node[i].as<std::string>());
-
-            instr.promotes_.push_back(promote);
-          }
+        if (promote_blobs_node && !promote_blobs_node.IsNull()) {
+          ParseList(promote.promote_, promote_blobs_node);
         }
+        if (demote_blobs_node && !demote_blobs_node.IsNull()){
+          ParseList(promote.promote_, demote_blobs_node);
+        }
+
+        instr.promotes_.push_back(promote);
 
         instr_list.push_back(instr);
       }
