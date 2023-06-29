@@ -50,6 +50,10 @@ class PrefetcherPolicy {
  public:
   /** Utilize the I/O pattern log to make prefetching decisions */
   virtual void Prefetch(BufferOrganizer *borg, BinaryLog<IoStat> &log) = 0;
+
+  // TODO(candice): why this?
+  /** Custom prefetch decision*/
+  virtual void Prefetch2(BufferOrganizer *borg, BinaryLog<IoStat> &log, hermes::TagId bkt_id) =0;
 };
 
 }  // namespace hermes
