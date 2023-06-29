@@ -195,11 +195,10 @@ void AprioriPrefetcher::PrintSchema2() {
   }
 }
 
-
+// TODO(candice): distinguish between adaptor or native API prefetcher to use this method
 template <typename StringT>
 std::string get_blob_name(const StringT& blob_page) {
-  // TODO(candice): distinguish between adaptor or native API prefetcher
-
+  
   // Retrieve the value of the environment variable
   const char* envValue = std::getenv("HERMES_PAGE_SIZE");
   std::string page_size;
@@ -273,82 +272,5 @@ void AprioriPrefetcher::Prefetch(BufferOrganizer* borg, BinaryLog<IoStat>& log) 
     }
   }
 }
-
-
-/** Custom Prefetch2*/
-void AprioriPrefetcher::Prefetch2(BufferOrganizer* borg, BinaryLog<IoStat>& log) {
-
-
-  for (const auto& rank_pair : rank_info_) {
-    int rank = rank_pair.first;
-    // const std::vector<AprioriPrefetchInstr>& instr_list = rank_pair.second;
-    size_t num_ops = log.GetRankLogSize(static_cast<int>(rank));
-    auto& instr_list = rank_info_[rank];
-
-
-    for (const AprioriPrefetchInstr& instr : instr_list) {
-
-
-      if (instr.min_op_count_ <= num_ops && instr.max_op_count_ >= num_ops) {
-              HILOG(kDebug, "Matching operation found, num_ops: {}", num_ops);
-
-        for (const AprioriPromoteInstr& promote_instr : instr.promotes_) {
-          std::cout << "    Bucket: " << promote_instr.bkt_name_ << std::endl;
-
-          std::cout << "    Promote Blobs: ";
-          for (const std::string& blob_name : promote_instr.promote_) {
-            std::cout << blob_name << " ";
-          }
-          std::cout << std::endl;
-
-          std::cout << "    Demote Blobs: ";
-          for (const std::string& blob_name : promote_instr.demote_) {
-            std::cout << blob_name << " ";
-          }
-          std::cout << std::endl;
-        }
-        
-      }
-
-    }
-  }
-
-
-
-
-  for (const auto& rank_pair : rank_info_) {
-    int rank = rank_pair.first;
-    size_t num_ops = log.GetRankLogSize(rank);
-    auto& instr_list = rank_info_[rank];
-
-    for (auto it = instr_list.begin(); it != instr_list.end(); ) {
-      auto& instr = *it;
-      if (instr.min_op_count_ <= num_ops && instr.max_op_count_ >= num_ops) {
-        HILOG(kDebug, "Matching operation found, num_ops: {}", num_ops);
-
-        for (const auto& promote_instr : instr.promotes_) {
-          for (const auto& blob_name : promote_instr.promote_) {
-            std::string blob_name_str = get_blob_name(blob_name);
-            HILOG(kDebug, "Promoting blob {} in bucket {}", blob_name_str, promote_instr.bkt_name_);
-            borg->GlobalOrganizeBlob(promote_instr.bkt_name_, blob_name_str, 1);
-          }
-        }
-
-        for (const auto& promote_instr : instr.promotes_) {
-          for (const auto& blob_name : promote_instr.demote_) {
-            std::string blob_name_str = get_blob_name(blob_name);
-            HILOG(kDebug, "Demoting blob {} in bucket {}", blob_name_str, promote_instr.bkt_name_);
-            borg->GlobalOrganizeBlob(promote_instr.bkt_name_, blob_name_str, 0);
-          }
-        }
-
-        it = instr_list.erase(it);
-      } else {
-        ++it;
-      }
-    }
-  }
-}
-
 
 }  // namespace hermes

@@ -119,7 +119,7 @@ void Prefetcher::Run() {
     // HILOG(kDebug, "Prefetching bucket bkt_id {}", bkt_id);
     // std::cout << "Prefetching bucket bkt_id " << bkt_id << std::endl;
     auto *policy = PrefetcherFactory::Get(hermes::PrefetcherType::kApriori);
-    policy->Prefetch2(borg_, log_);
+    policy->Prefetch(borg_, log_);
   }
 
   log_.Flush(false);
