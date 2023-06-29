@@ -53,7 +53,7 @@ class PrefetcherPolicy {
 
   // TODO(candice): why this?
   /** Custom prefetch decision*/
-  virtual void Prefetch2(BufferOrganizer *borg, BinaryLog<IoStat> &log, hermes::TagId bkt_id) =0;
+  virtual void Prefetch2(BufferOrganizer *borg, BinaryLog<IoStat> &log) =0;
 };
 
 }  // namespace hermes

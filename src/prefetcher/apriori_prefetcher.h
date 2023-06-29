@@ -53,7 +53,7 @@ class AprioriPrefetcher : public PrefetcherPolicy {
 
   /** Prefetch based on YAML schema */
   void Prefetch(BufferOrganizer *borg, BinaryLog<IoStat> &log);
-  void Prefetch2(BufferOrganizer *borg, BinaryLog<IoStat> &log, hermes::TagId bkt_id);
+  void Prefetch2(BufferOrganizer *borg, BinaryLog<IoStat> &log);
 
 
   private:

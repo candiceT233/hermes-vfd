@@ -35,8 +35,8 @@ void Prefetcher::Init() {
     return;
   }
 
-  // TODO(candice): start AprioriPrefetcher? parse schema?
-  AprioriPrefetcher apPrefetcher = AprioriPrefetcher();
+  // // TODO(candice): start AprioriPrefetcher? parse schema?
+  // AprioriPrefetcher apPrefetcher = AprioriPrefetcher();
 
   // Info needed per-client and server
   mdm_->is_mpi_ = conf.prefetcher_.is_mpi_;
@@ -87,18 +87,39 @@ void Prefetcher::Run() {
     tags.emplace(entry.tag_id_);
   }
 
-  // Enact the prefetchers for each bucket
+  // TODO(candice): remove print, only for debug
+  // log_.PrintBlobIds();
+
+  // TODO(candice): add a parameter to recognize native api vs. adaptor
+  // auto is_mpi = HERMES->server_config_.prefetcher_.is_mpi_;
+
+
+  // // Enact the prefetchers for each bucket
+  // /** Proper use of prefetcher*/
+  // for (auto &bkt_id : tags) {
+  //   // HICLOG(kDebug, "[TRAITS] Prefetching bucket bkt_id {}", bkt_id);
+  //   // std::cout << "[TRAITS] Prefetching bucket bkt_id " << bkt_id << std::endl;
+  //   std::vector<Trait*> traits = HERMES->GetTraits(bkt_id);
+  //   for (auto trait : traits) {
+  //     HILOG(kDebug, "[TRAITS] Prefetching bucket {} trait {}", bkt_id, trait);
+  //     // auto *policy = PrefetcherFactory::Get(hermes::PrefetcherType::kApriori);
+  //     // policy->Prefetch2(borg_, log_, bkt_id);
+  //     if (trait->header_->flags_.Any(HERMES_TRAIT_PREFETCHER)) {
+  //       auto *trait_hdr =
+  //         trait->GetHeader<hermes::PrefetcherTraitHeader>();        
+  //       auto *policy = PrefetcherFactory::Get(trait_hdr->type_);
+  //       policy->Prefetch(borg_, log_);
+  //     }
+  //   }
+  // }
+
+
   for (auto &bkt_id : tags) {
     std::vector<Trait*> traits = HERMES->GetTraits(bkt_id);
-    for (auto trait : traits) {
-      HILOG(kDebug, "Prefetching bucket {} trait {}", bkt_id, trait);
-      if (trait->header_->flags_.Any(HERMES_TRAIT_PREFETCHER)) {
-        auto *trait_hdr =
-          trait->GetHeader<hermes::PrefetcherTraitHeader>();
-        auto *policy = PrefetcherFactory::Get(trait_hdr->type_);
-        policy->Prefetch(borg_, log_);
-      }
-    }
+    // HILOG(kDebug, "Prefetching bucket bkt_id {}", bkt_id);
+    // std::cout << "Prefetching bucket bkt_id " << bkt_id << std::endl;
+    auto *policy = PrefetcherFactory::Get(hermes::PrefetcherType::kApriori);
+    policy->Prefetch2(borg_, log_);
   }
 
   log_.Flush(false);

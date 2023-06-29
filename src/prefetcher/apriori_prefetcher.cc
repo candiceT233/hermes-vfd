@@ -14,7 +14,10 @@
 #include "hermes.h"
 
 
-// TODO(candice): add debug commands
+
+// TODO(candice): add for custom prefetch
+#include "../adapter/mapper/abstract_mapper.h"
+
 
 namespace hermes {
 
@@ -113,12 +116,12 @@ void AprioriPrefetcher::PrintSchema() {
 /** Custom Schema code start */
 /** Parsing Thread:File YAML Schema. */
 void AprioriPrefetcher::ParseSchema2(const YAML::Node& schema) {
+  HILOG(kDebug, "Parsing Schema type-2 \n{}", schema);
 
-  for (const auto& rank_node_pair : schema) {
-    int rank = rank_node_pair.first.as<int>(); // this is thread rank
+  for (const auto &rank_node_pair : schema) {
+    const YAML::Node& rank_node = rank_node_pair.first;
     const YAML::Node& rank_instrs = rank_node_pair.second;
-
-    // std::vector<AprioriPrefetchInstr>& instr_list = rank_info_[rank];
+    int rank = rank_node.as<int>();
     auto& instr_list = rank_info_[rank];
 
     for (const YAML::Node& instr_list_node : rank_instrs) {
@@ -129,20 +132,24 @@ void AprioriPrefetcher::ParseSchema2(const YAML::Node& schema) {
         AprioriPrefetchInstr instr;
 
         const YAML::Node& op_count_range_node = prefetch_instr_node["op_count_range"];
-        instr.min_op_count_ = op_count_range_node[0].as<size_t>();
-        instr.max_op_count_ = op_count_range_node[1].as<size_t>();
+        if (op_count_range_node && !op_count_range_node.IsNull()) {
+          instr.min_op_count_ = op_count_range_node[0].as<size_t>();
+          instr.max_op_count_ = op_count_range_node[1].as<size_t>();
+        }
 
         const YAML::Node& promote_blobs_node = prefetch_instr_node["promote_blobs"];
         const YAML::Node& demote_blobs_node = prefetch_instr_node["demote_blobs"];
 
-        for (std::size_t i = 0; i < promote_blobs_node.size(); ++i) {
-          AprioriPromoteInstr promote;
-          promote.bkt_name_ = bucket_node.as<std::string>();
+        if (promote_blobs_node && !promote_blobs_node.IsNull() && demote_blobs_node && !demote_blobs_node.IsNull()) {
+          for (std::size_t i = 0; i < promote_blobs_node.size(); ++i) {
+            AprioriPromoteInstr promote;
+            promote.bkt_name_ = bucket_node.as<std::string>();
 
-          promote.promote_.push_back(promote_blobs_node[i].as<std::string>());
-          promote.demote_.push_back(demote_blobs_node[i].as<std::string>());
+            promote.promote_.push_back(promote_blobs_node[i].as<std::string>());
+            promote.demote_.push_back(demote_blobs_node[i].as<std::string>());
 
-          instr.promotes_.push_back(promote);
+            instr.promotes_.push_back(promote);
+          }
         }
 
         instr_list.push_back(instr);
@@ -188,46 +195,160 @@ void AprioriPrefetcher::PrintSchema2() {
   }
 }
 
+
+template <typename StringT>
+std::string get_blob_name(const StringT& blob_page) {
+  // TODO(candice): distinguish between adaptor or native API prefetcher
+
+  // Retrieve the value of the environment variable
+  const char* envValue = std::getenv("HERMES_PAGE_SIZE");
+  std::string page_size;
+
+  // Check if the environment variable exists
+  if (envValue && *envValue != '\0') {
+    // Convert the C-style string to a C++ string
+    page_size = envValue;
+
+    // // Log the value
+    // HILOG(kDebug, "hermes page_size {}", page_size);
+  } else {
+    HILOG(kDebug, "HERMES_PAGE_SIZE environment variable not set, default to 1MiB.");
+    page_size = "1048576";
+  }
+
+  // Convert blob_name
+  hermes::adapter::BlobPlacement p;
+  p.page_ = std::stoi(blob_page);
+  p.page_size_ = std::stoi(page_size);  // Convert page_size to an integer
+  std::string blob_name = p.CreateBlobName().str();
+
+  return blob_name;
+}
+
 /** Custom Schema code end */
 
 
 /** Prefetch based on YAML schema */
 void AprioriPrefetcher::Prefetch(BufferOrganizer* borg, BinaryLog<IoStat>& log) {
   for (auto& rank_log : rank_info_) {
-    int rank = rank_log.first;
-    size_t num_ops = log.GetRankLogSize(rank);
-    // std::vector<AprioriPrefetchInstr>& instr_list = rank_log.second;
-    auto &instr_list = rank_info_[rank];
+    size_t rank = rank_log.first;
+    size_t num_ops = log.GetRankLogSize(static_cast<int>(rank));
+    auto& instr_list = rank_info_[rank];
 
+    // Find the instruction to execute for this rank
     auto begin = instr_list.begin();
     auto cur = begin;
     for (; cur != instr_list.end(); ++cur) {
-      const AprioriPrefetchInstr& instr = *cur;
-      if (instr.min_op_count_ <= num_ops && instr.max_op_count_ >= num_ops) {
+      auto& instr = *cur;
+      if (instr.min_op_count_ <= num_ops && instr.max_op_count_ <= num_ops) {
+        HILOG(kDebug, "Matching operation found num_ops {}", num_ops);
         break;
       }
     }
 
+    // First, demote blobs
     if (cur != instr_list.end()) {
-      const AprioriPrefetchInstr& instr = *cur;
-      for (const AprioriPromoteInstr& promote_instr : instr.promotes_) {
-        for (const std::string& blob_name : promote_instr.demote_) {
+      auto& instr = *cur;
+      for (auto& promote_instr : instr.promotes_) {
+        for (const auto& blob_page : promote_instr.demote_) {
+          // get correct blob_name
+          std::string blob_name = get_blob_name(blob_page);
           HILOG(kDebug, "Demoting blob {} in bucket {}", blob_name, promote_instr.bkt_name_);
-
           borg->GlobalOrganizeBlob(promote_instr.bkt_name_, blob_name, 0);
         }
       }
 
-      for (const AprioriPromoteInstr& promote_instr : instr.promotes_) {
-        for (const std::string& blob_name : promote_instr.promote_) {
+      // Next, promote blobs
+      for (auto& promote_instr : instr.promotes_) {
+        for (const auto& blob_page : promote_instr.promote_) {
+          // get correct blob_name
+          std::string blob_name = get_blob_name(blob_page);
           HILOG(kDebug, "Promoting blob {} in bucket {}", blob_name, promote_instr.bkt_name_);
           borg->GlobalOrganizeBlob(promote_instr.bkt_name_, blob_name, 1);
         }
       }
-    }
 
-    instr_list.erase(begin, cur);
+      // Erase the executed instruction from the list
+      instr_list.erase(begin, cur + 1);
+    }
   }
 }
+
+
+/** Custom Prefetch2*/
+void AprioriPrefetcher::Prefetch2(BufferOrganizer* borg, BinaryLog<IoStat>& log) {
+
+
+  for (const auto& rank_pair : rank_info_) {
+    int rank = rank_pair.first;
+    // const std::vector<AprioriPrefetchInstr>& instr_list = rank_pair.second;
+    size_t num_ops = log.GetRankLogSize(static_cast<int>(rank));
+    auto& instr_list = rank_info_[rank];
+
+
+    for (const AprioriPrefetchInstr& instr : instr_list) {
+
+
+      if (instr.min_op_count_ <= num_ops && instr.max_op_count_ >= num_ops) {
+              HILOG(kDebug, "Matching operation found, num_ops: {}", num_ops);
+
+        for (const AprioriPromoteInstr& promote_instr : instr.promotes_) {
+          std::cout << "    Bucket: " << promote_instr.bkt_name_ << std::endl;
+
+          std::cout << "    Promote Blobs: ";
+          for (const std::string& blob_name : promote_instr.promote_) {
+            std::cout << blob_name << " ";
+          }
+          std::cout << std::endl;
+
+          std::cout << "    Demote Blobs: ";
+          for (const std::string& blob_name : promote_instr.demote_) {
+            std::cout << blob_name << " ";
+          }
+          std::cout << std::endl;
+        }
+        
+      }
+
+    }
+  }
+
+
+
+
+  for (const auto& rank_pair : rank_info_) {
+    int rank = rank_pair.first;
+    size_t num_ops = log.GetRankLogSize(rank);
+    auto& instr_list = rank_info_[rank];
+
+    for (auto it = instr_list.begin(); it != instr_list.end(); ) {
+      auto& instr = *it;
+      if (instr.min_op_count_ <= num_ops && instr.max_op_count_ >= num_ops) {
+        HILOG(kDebug, "Matching operation found, num_ops: {}", num_ops);
+
+        for (const auto& promote_instr : instr.promotes_) {
+          for (const auto& blob_name : promote_instr.promote_) {
+            std::string blob_name_str = get_blob_name(blob_name);
+            HILOG(kDebug, "Promoting blob {} in bucket {}", blob_name_str, promote_instr.bkt_name_);
+            borg->GlobalOrganizeBlob(promote_instr.bkt_name_, blob_name_str, 1);
+          }
+        }
+
+        for (const auto& promote_instr : instr.promotes_) {
+          for (const auto& blob_name : promote_instr.demote_) {
+            std::string blob_name_str = get_blob_name(blob_name);
+            HILOG(kDebug, "Demoting blob {} in bucket {}", blob_name_str, promote_instr.bkt_name_);
+            borg->GlobalOrganizeBlob(promote_instr.bkt_name_, blob_name_str, 0);
+          }
+        }
+
+        it = instr_list.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+}
+
 
 }  // namespace hermes
