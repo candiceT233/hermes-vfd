@@ -32,6 +32,8 @@ void ClientConfig::ParseAdapterConfig(YAML::Node &yaml_conf,
     conf.page_size_ = hshm::ConfigParse::ParseSize(
         yaml_conf["page_size"].as<std::string>());
   }
+  // TODO(candice): remove debug
+  HILOG(kDebug, "AdapterConfig: page_size={}", conf.page_size_);
   SetAdapterConfig(path, conf);
 }
 

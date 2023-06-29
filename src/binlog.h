@@ -21,6 +21,8 @@
 #include <cereal/types/vector.hpp>
 #include <sstream>
 
+// TODO(candice): added for get BlobName
+
 namespace hermes {
 
 template<typename T>
@@ -137,6 +139,32 @@ class BinaryLog {
     }
     cur_entry_count_ = 0;
   }
+
+  //TODO(candice): this for debug only, may remove later
+  /**
+   * Print the list of current entry.blob_id
+   */
+  void PrintBlobIds() {
+
+    bool firstEntry = true;
+    for (const auto& rank : cache_) {
+      for (const auto& entry : rank.log_) {
+        if (firstEntry)
+          std::cout << "Print all current blob ids: " << std::endl;
+
+        std::cout << "blob_id:" << entry.blob_id_;
+        std::cout << " blob_id_.node_id_:" << entry.blob_id_.node_id_;
+        std::cout << " blob_id_.unique_:" << entry.blob_id_.unique_;
+        // std::cout << "blob_name:" << GetBlobName(entry.blob_id_);
+        std::cout << std::endl;
+
+        firstEntry = false;
+      }
+      std::cout << std::endl;
+    }
+    
+  }
+
 };
 
 }  // namespace hermes
