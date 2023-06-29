@@ -38,7 +38,8 @@ struct BlobPlacement {
 
   /** create a BLOB name from index. */
   hshm::charbuf CreateBlobName() const {
-    hshm::charbuf buf(sizeof(page_) + sizeof(blob_off_));
+    // hshm::charbuf buf(sizeof(page_) + sizeof(blob_off_));
+    hshm::charbuf buf(sizeof(page_) + sizeof(page_size_));
     size_t off = 0;
     memcpy(buf.data() + off, &page_, sizeof(page_));
     off += sizeof(page_);
