@@ -322,6 +322,10 @@ void BufferOrganizer::GlobalOrganizeBlob(const std::string &bucket_name,
   auto bkt = HERMES->GetBucket(bucket_name);
   BlobId blob_id;
   bkt.GetBlobId(blob_name, blob_id);
+  if (blob_id.IsNull()) {
+    HILOG(kDebug," blob_id not found for blob_name {}", blob_name);
+    return; // Prevent daemon FATAL
+  }
   float blob_score = bkt.GetBlobScore(blob_id);
   GlobalOrganizeBlob(bkt, blob_name, blob_id, blob_score, score);
 }
