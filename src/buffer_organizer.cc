@@ -315,7 +315,7 @@ Blob BufferOrganizer::GlobalReadBlobFromBuffers(
 }
 
 /** Re-organize blobs based on a score */
-void BufferOrganizer::GlobalOrganizeBlob(const std::string &bucket_name,
+int BufferOrganizer::GlobalOrganizeBlob(const std::string &bucket_name,
                                          const std::string &blob_name,
                                          float score) {
   AUTO_TRACE(1)
@@ -323,11 +323,11 @@ void BufferOrganizer::GlobalOrganizeBlob(const std::string &bucket_name,
   BlobId blob_id;
   bkt.GetBlobId(blob_name, blob_id);
   if (blob_id.IsNull()) {
-    HILOG(kDebug," blob_id not found for blob_name {}", blob_name);
-    return; // Prevent daemon FATAL
+    return 0; // Prevent daemon FATAL
   }
   float blob_score = bkt.GetBlobScore(blob_id);
   GlobalOrganizeBlob(bkt, blob_name, blob_id, blob_score, score);
+  return 1;
 }
 
 /** Re-organize blobs based on a score */

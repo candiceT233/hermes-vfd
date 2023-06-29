@@ -251,7 +251,7 @@ class BufferOrganizer {
   Blob GlobalReadBlobFromBuffers(std::vector<BufferInfo> &buffers);
 
   /** Re-organize blobs based on a score */
-  void GlobalOrganizeBlob(const std::string &bucket_name,
+  int GlobalOrganizeBlob(const std::string &bucket_name,
                           const std::string &blob_name,
                           float score);
 

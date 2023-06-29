@@ -237,6 +237,7 @@ void AprioriPrefetcher::Prefetch(BufferOrganizer* borg, BinaryLog<IoStat>& log) 
     size_t rank = rank_log.first;
     size_t num_ops = log.GetRankLogSize(static_cast<int>(rank));
     auto& instr_list = rank_info_[rank];
+    int status;
 
     // Find the instruction to execute for this rank
     auto begin = instr_list.begin();
@@ -257,7 +258,10 @@ void AprioriPrefetcher::Prefetch(BufferOrganizer* borg, BinaryLog<IoStat>& log) 
           // get correct blob_name
           std::string blob_name = get_blob_name(blob_page);
           HILOG(kDebug, "Demoting blob {} in bucket {}", blob_name, promote_instr.bkt_name_);
-          borg->GlobalOrganizeBlob(promote_instr.bkt_name_, blob_name, 0);
+          status = borg->GlobalOrganizeBlob(promote_instr.bkt_name_, blob_name, 0);
+          if(!status){
+            HILOG(kDebug, "Blob {} not found", blob_page);
+          }
         }
       }
 
@@ -267,7 +271,10 @@ void AprioriPrefetcher::Prefetch(BufferOrganizer* borg, BinaryLog<IoStat>& log) 
           // get correct blob_name
           std::string blob_name = get_blob_name(blob_page);
           HILOG(kDebug, "Promoting blob {} in bucket {}", blob_name, promote_instr.bkt_name_);
-          borg->GlobalOrganizeBlob(promote_instr.bkt_name_, blob_name, 1);
+          status = borg->GlobalOrganizeBlob(promote_instr.bkt_name_, blob_name, 1);
+          if(!status){
+            HILOG(kDebug, "Blob {} not found", blob_page);
+          }
         }
       }
 
