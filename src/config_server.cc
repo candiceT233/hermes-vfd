@@ -138,6 +138,9 @@ void ServerConfig::ParsePrefetchInfo(YAML::Node yaml_conf) {
   if (yaml_conf["enabled"]) {
     prefetcher_.enabled_ = yaml_conf["enabled"].as<bool>();
   }
+  if (yaml_conf["adaptor"]) {
+    prefetcher_.is_adaptor_ = yaml_conf["adaptor"].as<bool>();
+  }
   if (yaml_conf["io_trace_path"]) {
     prefetcher_.trace_path_ = hshm::ConfigParse::ExpandPath(
         yaml_conf["io_trace_path"].as<std::string>());

@@ -199,33 +199,36 @@ void AprioriPrefetcher::PrintSchema2() {
   }
 }
 
-// TODO(candice): distinguish between adaptor or native API prefetcher to use this method
 template <typename StringT>
 std::string get_blob_name(const StringT& blob_page) {
-  
-  // Retrieve the value of the environment variable
-  const char* envValue = std::getenv("HERMES_PAGE_SIZE");
-  std::string page_size;
-
-  // Check if the environment variable exists
-  if (envValue && *envValue != '\0') {
-    // Convert the C-style string to a C++ string
-    page_size = envValue;
-
-    // // Log the value
-    // HILOG(kDebug, "hermes page_size {}", page_size);
+  bool is_adapter_ = HERMES->server_config_.prefetcher_.is_adaptor_;
+  if(!is_adapter_){
+    return blob_page;
   } else {
-    HILOG(kDebug, "HERMES_PAGE_SIZE environment variable not set, default to 1MiB.");
-    page_size = "1048576";
+    // Retrieve the value of the environment variable
+    const char* envValue = std::getenv("HERMES_PAGE_SIZE");
+    std::string page_size;
+
+    // Check if the environment variable exists
+    if (envValue && *envValue != '\0') {
+      // Convert the C-style string to a C++ string
+      page_size = envValue;
+
+      // // Log the value
+      // HILOG(kDebug, "hermes page_size {}", page_size);
+    } else {
+      HILOG(kDebug, "HERMES_PAGE_SIZE environment variable not set, default to 1MiB.");
+      page_size = "1048576";
+    }
+
+    // Convert blob_name
+    hermes::adapter::BlobPlacement p;
+    p.page_ = std::stoi(blob_page);
+    p.page_size_ = std::stoi(page_size);  // Convert page_size to an integer
+    std::string blob_name = p.CreateBlobName().str();
+
+    return blob_name;
   }
-
-  // Convert blob_name
-  hermes::adapter::BlobPlacement p;
-  p.page_ = std::stoi(blob_page);
-  p.page_size_ = std::stoi(page_size);  // Convert page_size to an integer
-  std::string blob_name = p.CreateBlobName().str();
-
-  return blob_name;
 }
 
 /** Custom Schema code end */
@@ -260,7 +263,7 @@ void AprioriPrefetcher::Prefetch(BufferOrganizer* borg, BinaryLog<IoStat>& log) 
           HILOG(kDebug, "Demoting blob {} in bucket {}", blob_name, promote_instr.bkt_name_);
           status = borg->GlobalOrganizeBlob(promote_instr.bkt_name_, blob_name, 0);
           if(!status){
-            HILOG(kDebug, "Blob {} not found", blob_page);
+            HILOG(kDebug, "Blob {} not found in bucket {}", blob_page, promote_instr.bkt_name_);
           }
         }
       }
@@ -273,7 +276,7 @@ void AprioriPrefetcher::Prefetch(BufferOrganizer* borg, BinaryLog<IoStat>& log) 
           HILOG(kDebug, "Promoting blob {} in bucket {}", blob_name, promote_instr.bkt_name_);
           status = borg->GlobalOrganizeBlob(promote_instr.bkt_name_, blob_name, 1);
           if(!status){
-            HILOG(kDebug, "Blob {} not found", blob_page);
+            HILOG(kDebug, "Blob {} not found in bucket {}", blob_page, promote_instr.bkt_name_);
           }
         }
       }

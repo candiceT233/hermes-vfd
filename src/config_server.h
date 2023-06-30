@@ -237,6 +237,7 @@ struct PrefetchInfo {
   std::string apriori_schema_path_;
   size_t epoch_ms_;
   bool is_mpi_;
+  bool is_adaptor_;
 };
 
 /**

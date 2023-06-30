@@ -91,35 +91,31 @@ void Prefetcher::Run() {
   // log_.PrintBlobIds();
 
   // TODO(candice): add a parameter to recognize native api vs. adaptor
-  // auto is_mpi = HERMES->server_config_.prefetcher_.is_mpi_;
+  bool is_adaptor_ = HERMES->server_config_.prefetcher_.is_adaptor_;
 
+  // Enact the prefetchers for each bucket
+  if(is_adaptor_){
+    /** Using Hermes through Adaptor */
+    for (auto &bkt_id : tags) {
+      std::vector<Trait*> traits = HERMES->GetTraits(bkt_id);
+      auto *policy = PrefetcherFactory::Get(hermes::PrefetcherType::kApriori);
+      policy->Prefetch(borg_, log_);
+    }
 
-  // // Enact the prefetchers for each bucket
-  // /** Proper use of prefetcher*/
-  // for (auto &bkt_id : tags) {
-  //   // HICLOG(kDebug, "[TRAITS] Prefetching bucket bkt_id {}", bkt_id);
-  //   // std::cout << "[TRAITS] Prefetching bucket bkt_id " << bkt_id << std::endl;
-  //   std::vector<Trait*> traits = HERMES->GetTraits(bkt_id);
-  //   for (auto trait : traits) {
-  //     HILOG(kDebug, "[TRAITS] Prefetching bucket {} trait {}", bkt_id, trait);
-  //     // auto *policy = PrefetcherFactory::Get(hermes::PrefetcherType::kApriori);
-  //     // policy->Prefetch2(borg_, log_, bkt_id);
-  //     if (trait->header_->flags_.Any(HERMES_TRAIT_PREFETCHER)) {
-  //       auto *trait_hdr =
-  //         trait->GetHeader<hermes::PrefetcherTraitHeader>();        
-  //       auto *policy = PrefetcherFactory::Get(trait_hdr->type_);
-  //       policy->Prefetch(borg_, log_);
-  //     }
-  //   }
-  // }
-
-
-  for (auto &bkt_id : tags) {
-    std::vector<Trait*> traits = HERMES->GetTraits(bkt_id);
-    // HILOG(kDebug, "Prefetching bucket bkt_id {}", bkt_id);
-    // std::cout << "Prefetching bucket bkt_id " << bkt_id << std::endl;
-    auto *policy = PrefetcherFactory::Get(hermes::PrefetcherType::kApriori);
-    policy->Prefetch(borg_, log_);
+  } else {
+    // Native Hermes API
+    /** Native Hermes API*/
+    for (auto &bkt_id : tags) {
+      std::vector<Trait*> traits = HERMES->GetTraits(bkt_id);
+      for (auto trait : traits) {
+        if (trait->header_->flags_.Any(HERMES_TRAIT_PREFETCHER)) {
+          auto *trait_hdr =
+            trait->GetHeader<hermes::PrefetcherTraitHeader>();        
+          auto *policy = PrefetcherFactory::Get(trait_hdr->type_);
+          policy->Prefetch(borg_, log_);
+        }
+      }
+    }
   }
 
   log_.Flush(false);
