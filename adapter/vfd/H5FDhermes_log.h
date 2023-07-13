@@ -118,6 +118,8 @@ struct H5FD_tkr_file_info_t { // used by VFD
     int file_read_cnt;
     int file_write_cnt;
     size_t file_size;
+    size_t adaptor_page_size;
+    size_t io_bytes;
 
     /* common metadata access type */
     h5_mem_stat_t * h5_draw; // H5FD_MEM_DRAW
@@ -331,14 +333,14 @@ void print_mem_stat(const h5_mem_stat_t* mem_stat)
 
 
 void dump_vfd_mem_stat_yaml(FILE* f, const h5_mem_stat_t* mem_stat) {
-    fprintf(f, "    - %s:\n", mem_stat->mem_type.c_str());
+    fprintf(f, "      %s:\n", mem_stat->mem_type.c_str());
     fprintf(f, "        read_bytes: %zu\n", mem_stat->read_bytes);
     fprintf(f, "        read_cnt: %d\n", mem_stat->read_cnt);
     fprintf(f, "        read_ranges: {");
     
     page_range_t* read_range = mem_stat->read_ranges;
     while (read_range != nullptr) {
-        fprintf(f, "%d:(%zu,%zu)", read_range->io_idx, read_range->start_page, read_range->end_page);
+        fprintf(f, "%d:[%zu,%zu]", read_range->io_idx, read_range->start_page, read_range->end_page);
         read_range = read_range->next;
         if (read_range != nullptr) {
             fprintf(f, ",");
@@ -353,7 +355,7 @@ void dump_vfd_mem_stat_yaml(FILE* f, const h5_mem_stat_t* mem_stat) {
     page_range_t* write_range = mem_stat->write_ranges;
     while (write_range != nullptr) {
         // fprintf(f, "(%zu,%zu)", write_range->start_page, write_range->end_page);
-        fprintf(f, "%d:(%zu,%zu)", write_range->io_idx, write_range->start_page, write_range->end_page);
+        fprintf(f, "%d:[%zu,%zu]", write_range->io_idx, write_range->start_page, write_range->end_page);
         write_range = write_range->next;
         if (write_range != nullptr) {
             fprintf(f, ",");
@@ -362,7 +364,6 @@ void dump_vfd_mem_stat_yaml(FILE* f, const h5_mem_stat_t* mem_stat) {
     
     fprintf(f, "}\n");
 }
-
 
 
 
@@ -384,7 +385,7 @@ void dump_vfd_file_stat_yaml(vfd_tkr_helper_t* helper, const vfd_file_tkr_info_t
   fprintf(f, "- file-%lu:\n", info->sorder_id);
   fprintf(f, "    file_name: \"%s\"\n", file_name);
   fprintf(f, "    open_time: %lu\n", info->open_time);
-  fprintf(f, "    close_time: %lu\n", info->close_time);
+  fprintf(f, "    close_time: %lu\n", get_time_usec());
   fprintf(f, "    file_intent: [");
   if (info->intent != nullptr) {
       fprintf(f, "%s", info->intent);
@@ -393,8 +394,25 @@ void dump_vfd_file_stat_yaml(vfd_tkr_helper_t* helper, const vfd_file_tkr_info_t
   fprintf(f, "    file_no: %lu\n", info->file_no);
   fprintf(f, "    file_read_cnt: %d\n", info->file_read_cnt);
   fprintf(f, "    file_write_cnt: %d\n", info->file_write_cnt);
+  if(info->file_read_cnt > 0 && info->file_write_cnt == 0){
+    fprintf(f, "    access_type: read_only\n");
+    fprintf(f, "    file_type: input\n");
+  }
+  else if(info->file_write_cnt > 0 && info->file_read_cnt == 0){
+    fprintf(f, "    access_type: write_only\n");
+    fprintf(f, "    file_type: output\n");
+  }
+  else if (info->file_write_cnt > 0 && info->file_read_cnt > 0){
+    // read_write does not identify order of read and write
+    fprintf(f, "    access_type: read_write\n");
+    fprintf(f, "    file_type: input-output\n");
+  } else {
+    fprintf(f, "    access_type: not_accessed\n");
+    fprintf(f, "    file_type: na\n");
+  }
+  fprintf(f, "    total_io_bytes: %d\n", info->io_bytes);
   fprintf(f, "    file_size: %zu\n", info->file_size);
-  fprintf(f, "    ata:\n");
+  fprintf(f, "    data:\n");
   // Check and print h5_mem_stat_t structs if they exist
   if (info->h5_draw != nullptr) {
     dump_vfd_mem_stat_yaml(f, info->h5_draw);
@@ -414,9 +432,10 @@ void dump_vfd_file_stat_yaml(vfd_tkr_helper_t* helper, const vfd_file_tkr_info_t
   }
   // Print other h5_mem_stat_t structs if they exist in a similar way
 
-  fprintf(f, "Task:\n");
-  fprintf(f, "- task_id: %d\n", getpid());
-  fprintf(f, "    VFD-Total-Overhead(ms): %ld\n", TOTAL_TKR_VFD_OVERHEAD/1000);
+  fprintf(f, "- Task:\n");
+  fprintf(f, "  task_id: %d\n", getpid());
+  fprintf(f, "  hermes_page_size: %d\n", info->adaptor_page_size);
+  fprintf(f, "  VFD-Total-Overhead(ms): %ld\n", TOTAL_TKR_VFD_OVERHEAD/1000);
 
   fprintf(f, "\n");
   fflush(f);
@@ -564,6 +583,12 @@ void read_write_info_update(const char* func_name, char * file_name, hid_t fapl_
     info->file_name = file_name;
   }
 
+  if (!info->io_bytes || info->io_bytes == 0){
+    info->io_bytes = size;
+  } else {
+    info->io_bytes += size;
+  }
+
   if(strcmp(func_name, read_func) == 0){
     TOTAL_VFD_READ += size;
     info->file_read_cnt++;
@@ -605,7 +630,10 @@ void open_close_info_update(const char* func_name, H5FD_hermes_t *file, size_t e
   }
   if (!info->file_size || info->file_size <= 0)
     info->file_size = eof;
-  
+
+  if(!info->adaptor_page_size)
+    info->adaptor_page_size = file->page_size;
+    
   TOTAL_TKR_VFD_OVERHEAD+=(get_time_usec() - t_end );
 #ifdef VFD_LOGGING
   // print_open_close_info(func_name, file, file->name, eof, flags, t_start, t_end);
