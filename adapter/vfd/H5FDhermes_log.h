@@ -792,7 +792,7 @@ void print_open_close_info(const char* func_name, void * obj, const char * file_
   // initialize & reset
   TOTAL_VFD_READ = 0;
   TOTAL_VFD_WRITE = 0;
-  VFD_ACCESS_IDX = 0; 
+  // VFD_ACCESS_IDX = 0; 
 
 }
 
@@ -910,8 +910,11 @@ vfd_file_tkr_info_t* add_vfd_file_node(vfd_tkr_helper_t * helper, const char* fi
 
   assert(helper);
 
-  if(!helper->vfd_opened_files) //empty linked list, no opened file.
-      assert(helper->vfd_opened_files_cnt == 0);
+  if(!helper->vfd_opened_files){ //empty linked list, no opened file.
+    assert(helper->vfd_opened_files_cnt == 0);
+    return 0;
+  } 
+      
 
   // Search for file in list of currently opened ones
   cur = helper->vfd_opened_files;
