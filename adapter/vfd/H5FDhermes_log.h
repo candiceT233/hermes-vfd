@@ -25,6 +25,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <cstring>
 #include <assert.h>
 #include <math.h>
 
@@ -36,14 +37,15 @@
 #include <mpi.h>
 
 /* HDF5 header for dynamic plugin loading */
-#include "H5PLextern.h"
+// #include "H5PLextern.h"
 #include "H5FDhermes.h"     /* Hermes file driver     */
 // #include "H5FDhermes_err.h" /* TODO: error handling         */
 
 
 // #ifdef ENABLE_TRACKER
 // extern "C" {
-#include "/qfs/people/tang584/scripts/vol-tracker/src/tracker_vol_types.h" /* Connecting to vol */
+// #include "/qfs/people/tang584/scripts/vol-tracker/src/tracker_vol_types.h" /* Connecting to vol */
+#include "/home/candicet233/scripts/vol-tracker/src/tracker_vol_types.h" /* Connecting to vol */
 // }
 // #endif
 
@@ -113,6 +115,7 @@ struct H5FD_tkr_file_info_t { // used by VFD
     const char* file_name;
     unsigned long file_no;
     char* intent;
+    char * task_name;
     unsigned long sorder_id; // need lock
     hid_t fapl_id;
     int file_read_cnt;
@@ -198,6 +201,7 @@ std::string get_mem_type(H5F_mem_t type);
 
 
 void parseEnvironmentVariable(char* file_path) {
+
     const char* env_var = std::getenv("HDF5_VOL_CONNECTOR");
     if (env_var) {
         std::string env_string(env_var);
@@ -224,7 +228,7 @@ void parseEnvironmentVariable(char* file_path) {
 
     }
 
-  // // Print the parsed values
+  // Print the parsed values
   // std::cout << "File Path: " << file_path << std::endl;
   // std::cout << "DLife Level: " << vfd_tkr_level << std::endl;
   // std::cout << "DLife Line Format: " << vfd_tkr_line_format << std::endl;
@@ -333,6 +337,7 @@ void print_mem_stat(const h5_mem_stat_t* mem_stat)
 
 
 void dump_vfd_mem_stat_yaml(FILE* f, const h5_mem_stat_t* mem_stat) {
+
     fprintf(f, "      %s:\n", mem_stat->mem_type.c_str());
     fprintf(f, "        read_bytes: %zu\n", mem_stat->read_bytes);
     fprintf(f, "        read_cnt: %d\n", mem_stat->read_cnt);
@@ -369,6 +374,8 @@ void dump_vfd_mem_stat_yaml(FILE* f, const h5_mem_stat_t* mem_stat) {
 
 void dump_vfd_file_stat_yaml(vfd_tkr_helper_t* helper, const vfd_file_tkr_info_t* info) {
 
+  std::cout << "File close and write to : " << helper->tkr_file_path << std::endl;
+
   const char* file_name = strrchr(info->file_name, '/');
   if(file_name)
       file_name++;
@@ -384,6 +391,19 @@ void dump_vfd_file_stat_yaml(vfd_tkr_helper_t* helper, const vfd_file_tkr_info_t
 
   fprintf(f, "- file-%lu:\n", info->sorder_id);
   fprintf(f, "    file_name: \"%s\"\n", file_name);
+
+  if (info->task_name != nullptr) {
+      fprintf(f, "    task_name: \"%s\"\n", info->task_name);
+  } else {
+    // add task name
+    const char* curr_task = std::getenv("CURR_TASK");
+    // info->task_name = curr_task ? strdup(curr_task) : nullptr;
+    if (curr_task)
+      fprintf(f, "    task_name: \"%s\"\n", curr_task);
+    else
+      fprintf(f, "    task_name: \"\"\n");
+  }
+  
   fprintf(f, "    open_time: %lu\n", info->open_time);
   fprintf(f, "    close_time: %lu\n", get_time_usec());
   fprintf(f, "    file_intent: [");
@@ -391,6 +411,7 @@ void dump_vfd_file_stat_yaml(vfd_tkr_helper_t* helper, const vfd_file_tkr_info_t
       fprintf(f, "%s", info->intent);
   }
   fprintf(f, "]\n");
+
   fprintf(f, "    file_no: %lu\n", info->file_no);
   fprintf(f, "    file_read_cnt: %d\n", info->file_read_cnt);
   fprintf(f, "    file_write_cnt: %d\n", info->file_write_cnt);
@@ -410,7 +431,7 @@ void dump_vfd_file_stat_yaml(vfd_tkr_helper_t* helper, const vfd_file_tkr_info_t
     fprintf(f, "    access_type: not_accessed\n");
     fprintf(f, "    file_type: na\n");
   }
-  fprintf(f, "    total_io_bytes: %d\n", info->io_bytes);
+  fprintf(f, "    total_io_bytes: %ld\n", info->io_bytes);
   fprintf(f, "    file_size: %zu\n", info->file_size);
   fprintf(f, "    data:\n");
   // Check and print h5_mem_stat_t structs if they exist
@@ -434,12 +455,13 @@ void dump_vfd_file_stat_yaml(vfd_tkr_helper_t* helper, const vfd_file_tkr_info_t
 
   fprintf(f, "- Task:\n");
   fprintf(f, "  task_id: %d\n", getpid());
-  fprintf(f, "  hermes_page_size: %d\n", info->adaptor_page_size);
+  fprintf(f, "  hermes_page_size: %ld\n", info->adaptor_page_size);
   fprintf(f, "  VFD-Total-Overhead(ms): %ld\n", TOTAL_TKR_VFD_OVERHEAD/1000);
 
   fprintf(f, "\n");
   fflush(f);
   fclose(f);
+
 
 }
 
@@ -449,21 +471,25 @@ void dump_vfd_file_stat_yaml(vfd_tkr_helper_t* helper, const vfd_file_tkr_info_t
 std::string getFileIntentFlagsStr(unsigned int flags) {
     std::string intentFlagsStr;
 
-    if (flags & H5F_ACC_RDWR)
-        intentFlagsStr += "\"H5F_ACC_RDWR\",";
-    else if (flags & H5F_ACC_RDONLY)
-        intentFlagsStr += "\"H5F_ACC_RDONLY\",";
-    if (flags & H5F_ACC_TRUNC)
-        intentFlagsStr += "\"H5F_ACC_TRUNC\",";
-    if (flags & H5F_ACC_CREAT)
-        intentFlagsStr += "\"H5F_ACC_CREAT\",";
-    if (flags & H5F_ACC_EXCL)
-        intentFlagsStr += "\"H5F_ACC_EXCL\",";
+    if (flags == 0)
+        intentFlagsStr += "\"NOT_SPECIFIED\",";
+    else{
+      if (flags & H5F_ACC_RDWR)
+          intentFlagsStr += "\"H5F_ACC_RDWR\",";
+      if (flags & H5F_ACC_RDONLY)
+          intentFlagsStr += "\"H5F_ACC_RDONLY\",";
+      if (flags & H5F_ACC_TRUNC)
+          intentFlagsStr += "\"H5F_ACC_TRUNC\",";
+      if (flags & H5F_ACC_CREAT)
+          intentFlagsStr += "\"H5F_ACC_CREAT\",";
+      if (flags & H5F_ACC_EXCL)
+          intentFlagsStr += "\"H5F_ACC_EXCL\",";
+    }
 
     // Remove the trailing comma if there are any flags
     if (!intentFlagsStr.empty())
         intentFlagsStr.pop_back();
-
+    
     return intentFlagsStr;
 }
 
@@ -579,9 +605,11 @@ void read_write_info_update(const char* func_name, char * file_name, hid_t fapl_
   H5FD_hermes_t *file = (H5FD_hermes_t *)_file;
   vfd_file_tkr_info_t * info = (vfd_file_tkr_info_t *)file->vfd_file_info;
 
+
   if (info->file_name == nullptr){
     info->file_name = file_name;
   }
+
 
   if (!info->io_bytes || info->io_bytes == 0){
     info->io_bytes = size;
@@ -616,25 +644,40 @@ void open_close_info_update(const char* func_name, H5FD_hermes_t *file, size_t e
 {
   if(!TOTAL_TKR_VFD_OVERHEAD)
     TOTAL_TKR_VFD_OVERHEAD = 0;
-  
+
+
   // H5FD_hermes_t *file = (H5FD_hermes_t *)_file;
   vfd_file_tkr_info_t * info = (vfd_file_tkr_info_t *)file->vfd_file_info;
+
+
   if(!info->intent){
+
     std::string file_intent = getFileIntentFlagsStr(flags);
     info->intent = (char*)malloc((file_intent.length() + 1) * sizeof(char));
     strcpy(info->intent, file_intent.c_str());
+
+    // info->intent = file_intent.c_str() ? strdup(file_intent.c_str()) : nullptr;
+
+
   } else if (info->intent[0] == '\0'){
+
     std::string file_intent = getFileIntentFlagsStr(flags);
     strcpy(info->intent, file_intent.c_str());
-    // printf("intent: [%s]\n", info->intent);
-  }
+  } 
+
+  // printf("intent: [%s]\n", info->intent);
+
+
   if (!info->file_size || info->file_size <= 0)
     info->file_size = eof;
 
   if(!info->adaptor_page_size)
     info->adaptor_page_size = file->page_size;
-    
+
+
   TOTAL_TKR_VFD_OVERHEAD+=(get_time_usec() - t_end );
+
+
 #ifdef VFD_LOGGING
   // print_open_close_info(func_name, file, file->name, eof, flags, t_start, t_end);
 #endif
@@ -721,11 +764,11 @@ void print_read_write_info(const char* func_name, char * file_name, hid_t fapl_i
   if(H5Pget_page_buffer_size(fapl_id, &buf_size, &min_meta_perc, &min_raw_perc) > 0){
       printf("\"H5Pget_page_buffer_size-buf_size\": %ld, ", buf_size);
       printf("\"H5Pget_page_buffer_size-min_meta_perc\": %d, ", min_meta_perc); // TODO: ?
-      printf("\"H5Pget_page_buffer_size-min_raw_perc\": %ld, ", min_raw_perc);
+      printf("\"H5Pget_page_buffer_size-min_raw_perc\": %d, ", min_raw_perc);
   }
 
   printf("\"file_name\": \"%s\", ", strdup(file_name));
-  printf("\"vfd_obj\": %ld, ", obj);
+  printf("\"vfd_obj\": %p, ", obj);
 
   printf("}\n");
 
@@ -865,6 +908,8 @@ void vfd_file_info_free(vfd_file_tkr_info_t* info)
 
     // if(info->file_name)
     //   free((void*)(info->file_name));
+    if(info->task_name)
+      free((void*)(info->task_name));
     free(info);
 }
 
@@ -895,6 +940,10 @@ vfd_file_tkr_info_t* new_vfd_file_info(const char* fname, unsigned long file_no)
     info->h5_btree = nullptr;
     info->h5_lheap = nullptr;
 
+    // add task name
+    const char* curr_task = std::getenv("CURR_TASK");
+    info->task_name = curr_task ? strdup(curr_task) : nullptr;
+
     return info;
 }
 
@@ -910,11 +959,14 @@ vfd_file_tkr_info_t* add_vfd_file_node(vfd_tkr_helper_t * helper, const char* fi
 
   assert(helper);
 
-  if(!helper->vfd_opened_files){ //empty linked list, no opened file.
-    assert(helper->vfd_opened_files_cnt == 0);
-    return 0;
-  } 
+  // if(!helper->vfd_opened_files){ //empty linked list, no opened file.
+  //   assert(helper->vfd_opened_files_cnt == 0);
+  //   return 0;
+  // } 
       
+  if(!helper->vfd_opened_files) //empty linked list, no opened file.
+    assert(helper->vfd_opened_files_cnt == 0);
+  
 
   // Search for file in list of currently opened ones
   cur = helper->vfd_opened_files;
